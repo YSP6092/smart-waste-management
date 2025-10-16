@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { Settings, Plus, Edit, Trash, Download, CheckCircle, MapPin } from 'lucide-react';
 import axios from 'axios';
 
-// ✅ Automatically switch between local and deployed backend
-const API_URL = import.meta.env.VITE_API_URL || 'https://smart-waste-management.onrender.com';
+const API_URL = import.meta.env.VITE_API_URL || 'https://smart-waste-management-54v3.onrender.com';
 
 const Admin = ({ bins, onRefresh }) => {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -18,215 +17,498 @@ const Admin = ({ bins, onRefresh }) => {
     lng: ''
   });
 
-  const handleAddBin = async () => {
-    try {
-      const newBin = {
-        binId: formData.binId,
-        location: formData.location,
+  // Rest of your component code goes here...
+};
+
+
+
+
+const handleAddBin = async (e) => {
+    e.preventDefault();
+    
+    const newBin = {
+      binId: formData.binId,
+      location: formData.location,
+      coordinates: {
         lat: parseFloat(formData.lat),
-        lng: parseFloat(formData.lng),
-        status: 'Empty'
-      };
-      await axios.post(`${API_URL}/api/bins`, newBin);
-      onRefresh();
+        lng: parseFloat(formData.lng)
+      },
+      fillLevel: 0,
+      battery: 100,
+      temperature: 25,
+      status: 'normal'
+    };
+
+    try {
+     await axios.post(`${API_URL}/api/bins`, newBin);
+      alert('Bin added successfully!');
       setShowAddModal(false);
+      setFormData({ binId: '', location: '', lat: '', lng: '' });
+      if (onRefresh) onRefresh();
     } catch (error) {
-      console.error('Error adding bin:', error);
+      alert('Error adding bin: ' + error.message);
     }
   };
 
-  const handleEditBin = async () => {
+  const handleEditBin = async (e) => {
+    e.preventDefault();
+    
     try {
-      await axios.put(`${API_URL}/api/bins/${selectedBin.binId}`, {
-        location: formData.location,
-        lat: parseFloat(formData.lat),
-        lng: parseFloat(formData.lng)
-      });
-      onRefresh();
+     await axios.put(`${API_URL}/api/bins/${selectedBin.binId}`, {
+  location: formData.location,
+  coordinates: {
+    lat: parseFloat(formData.lat),
+    lng: parseFloat(formData.lng)
+  }
+});
+      alert('Bin updated successfully!');
       setShowEditModal(false);
+      setSelectedBin(null);
+      if (onRefresh) onRefresh();
     } catch (error) {
-      console.error('Error editing bin:', error);
+      alert('Error updating bin: ' + error.message);
     }
   };
 
   const handleDeleteBin = async (binId) => {
+    if (!window.confirm('Are you sure you want to delete this bin?')) return;
+    
     try {
       await axios.delete(`${API_URL}/api/bins/${binId}`);
-      onRefresh();
+      alert('Bin deleted successfully!');
+      if (onRefresh) onRefresh();
     } catch (error) {
-      console.error('Error deleting bin:', error);
+      alert('Error deleting bin: ' + error.message);
     }
   };
+  // Search location using OpenStreetMap
+const searchLocation = async (query) => {
+  if (query.length < 3) {
+    setLocationSuggestions([]);
+    return;
+  }
+  
+  setSearchingLocation(true);
+  try {
+    const response = await axios.get(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Nagpur, India')}&limit=5`
+    );
+    setLocationSuggestions(response.data);
+  } catch (error) {
+    console.error('Error searching location:', error);
+    setLocationSuggestions([]);
+  }
+  setSearchingLocation(false);
+};
 
-  const handleMarkCollected = async (bin) => {
+// Select location from suggestions
+const selectLocation = (suggestion) => {
+  setFormData({
+    ...formData,
+    location: suggestion.display_name.split(',')[0], // First part of address
+    lat: suggestion.lat,
+    lng: suggestion.lon
+  });
+  setLocationSuggestions([]);
+};
+
+// Debounce search
+let searchTimeout;
+const handleLocationSearch = (value) => {
+  setFormData({ ...formData, location: value });
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    searchLocation(value);
+  }, 500);
+};
+
+  const handleRecordCollection = async (bin) => {
+    if (!window.confirm(`Record collection for ${bin.binId}?`)) return;
+
     try {
-      await axios.put(`${API_URL}/api/bins/${bin.binId}`, { status: 'Empty' });
-      onRefresh();
+      await axios.put(`${API_URL}/api/bins/${bin.binId}`, {
+  fillLevel: 0,
+  status: 'normal'
+});
+      alert('Collection recorded!');
+      if (onRefresh) onRefresh();
     } catch (error) {
-      console.error('Error marking collected:', error);
+      alert('Error recording collection: ' + error.message);
     }
   };
 
-  const handleUpdateLocations = async () => {
-    try {
-      await axios.post(`${API_URL}/api/bins/update-locations`);
-      onRefresh();
-    } catch (error) {
-      console.error('Error updating locations:', error);
-    }
-  };
-
-  const exportData = () => {
+  const handleExportData = () => {
     const csvContent = [
-      ['Bin ID', 'Location', 'Latitude', 'Longitude', 'Status'],
-      ...bins.map(bin => [bin.binId, bin.location, bin.lat, bin.lng, bin.status])
-    ].map(e => e.join(',')).join('\n');
+      ['Bin ID', 'Location', 'Fill Level', 'Status', 'Battery', 'Temperature', 'Latitude', 'Longitude'],
+      ...bins.map(bin => [
+        bin.binId,
+        bin.location,
+        bin.fillLevel,
+        bin.status,
+        bin.battery,
+        bin.temperature,
+        bin.coordinates.lat,
+        bin.coordinates.lng
+      ])
+    ].map(row => row.join(',')).join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'bins_data.csv';
-    link.click();
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `waste-management-report-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
   };
+const handleUpdateLocations = async () => {
+  if (!window.confirm('Update all bins with real location names from coordinates? This may take 10-15 seconds.')) return;
+
+  try {
+    const response = await axios.post(`${API_URL}/api/bins/update-locations`);
+    alert(response.data.message);
+    if (onRefresh) onRefresh();
+  } catch (error) {
+    alert('Error updating locations: ' + error.message);
+  }
+};
+
+const openEditModal = (bin) => {
+  setSelectedBin(bin);
+  setFormData({
+    binId: bin.binId,
+    location: bin.location,
+    lat: bin.coordinates.lat.toString(),
+    lng: bin.coordinates.lng.toString()
+  });
+  setShowEditModal(true);
+};
 
   return (
-    <div className="p-6 bg-white rounded-2xl shadow-lg space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Settings className="text-green-600" /> Admin Dashboard
-        </h2>
-        <div className="flex gap-3">
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl flex items-center gap-2"
-          >
-            <Plus size={18} /> Add Bin
-          </button>
-          <button
-            onClick={exportData}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl flex items-center gap-2"
-          >
-            <Download size={18} /> Export
-          </button>
+    <div className="space-y-6">
+      {/* Admin Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="bg-purple-500 p-3 rounded-lg">
+            <Settings className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold">Admin Panel</h2>
+            <p className="text-slate-400">Manage bins and system settings</p>
+          </div>
+        </div>
+
+       <div className="flex gap-3">
+  <button
+    onClick={handleUpdateLocations}
+    className="px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg flex items-center gap-2 transition-all"
+  >
+    <MapPin className="w-4 h-4" />
+    Update Locations
+  </button>
+  <button
+    onClick={handleExportData}
+    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg flex items-center gap-2 transition-all"
+  >
+    <Download className="w-4 h-4" />
+    Export Data
+  </button>
+  <button
+    onClick={() => setShowAddModal(true)}
+    className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 rounded-lg flex items-center gap-2 transition-all"
+  >
+    <Plus className="w-4 h-4" />
+    Add New Bin
+  </button>
+</div>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+          <div className="text-sm text-slate-400">Total Bins</div>
+          <div className="text-3xl font-bold">{bins.length}</div>
+        </div>
+        <div className="bg-slate-800 border border-red-700 rounded-lg p-4">
+          <div className="text-sm text-slate-400">Need Collection</div>
+          <div className="text-3xl font-bold text-red-500">
+            {bins.filter(b => b.status === 'critical').length}
+          </div>
+        </div>
+        <div className="bg-slate-800 border border-green-700 rounded-lg p-4">
+          <div className="text-sm text-slate-400">Optimal Status</div>
+          <div className="text-3xl font-bold text-green-500">
+            {bins.filter(b => b.status === 'normal').length}
+          </div>
+        </div>
+        <div className="bg-slate-800 border border-blue-700 rounded-lg p-4">
+          <div className="text-sm text-slate-400">Avg Fill Level</div>
+          <div className="text-3xl font-bold text-blue-500">
+            {bins.length > 0 ? (bins.reduce((acc, b) => acc + b.fillLevel, 0) / bins.length).toFixed(1) : 0}%
+          </div>
         </div>
       </div>
 
-      <table className="w-full border border-gray-200 rounded-xl overflow-hidden">
-        <thead className="bg-green-50 text-green-700">
-          <tr>
-            <th className="p-3 text-left">Bin ID</th>
-            <th className="p-3 text-left">Location</th>
-            <th className="p-3 text-left">Latitude</th>
-            <th className="p-3 text-left">Longitude</th>
-            <th className="p-3 text-left">Status</th>
-            <th className="p-3 text-center">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {bins.map((bin) => (
-            <tr key={bin.binId} className="border-t hover:bg-gray-50">
-              <td className="p-3">{bin.binId}</td>
-              <td className="p-3">{bin.location}</td>
-              <td className="p-3">{bin.lat}</td>
-              <td className="p-3">{bin.lng}</td>
-              <td className={`p-3 font-medium ${bin.status === 'Full' ? 'text-red-600' : 'text-green-600'}`}>
-                {bin.status}
-              </td>
-              <td className="p-3 flex justify-center gap-3">
-                <button
-                  onClick={() => {
-                    setSelectedBin(bin);
-                    setFormData({
-                      binId: bin.binId,
-                      location: bin.location,
-                      lat: bin.lat,
-                      lng: bin.lng
-                    });
-                    setShowEditModal(true);
-                  }}
-                  className="text-blue-600 hover:text-blue-800"
-                >
-                  <Edit size={18} />
-                </button>
-                <button
-                  onClick={() => handleDeleteBin(bin.binId)}
-                  className="text-red-600 hover:text-red-800"
-                >
-                  <Trash size={18} />
-                </button>
-                {bin.status === 'Full' && (
-                  <button
-                    onClick={() => handleMarkCollected(bin)}
-                    className="text-green-600 hover:text-green-800"
-                  >
-                    <CheckCircle size={18} />
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* Bins Table */}
+      <div className="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+        <div className="p-6 border-b border-slate-700">
+          <h3 className="text-xl font-bold">Bin Management</h3>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-slate-900">
+              <tr>
+                <th className="text-left p-4 text-sm font-semibold text-slate-300">Bin ID</th>
+                <th className="text-left p-4 text-sm font-semibold text-slate-300">Location</th>
+                <th className="text-left p-4 text-sm font-semibold text-slate-300">Fill Level</th>
+                <th className="text-left p-4 text-sm font-semibold text-slate-300">Status</th>
+                <th className="text-left p-4 text-sm font-semibold text-slate-300">Battery</th>
+                <th className="text-left p-4 text-sm font-semibold text-slate-300">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bins.map((bin, idx) => (
+                <tr key={idx} className="border-t border-slate-700 hover:bg-slate-900 transition-colors">
+                  <td className="p-4 font-semibold">{bin.binId}</td>
+                  <td className="p-4 text-slate-300">{bin.location}</td>
+                  <td className="p-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-24 bg-slate-700 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full ${
+                            bin.status === 'critical' ? 'bg-red-500' :
+                            bin.status === 'warning' ? 'bg-yellow-500' : 'bg-green-500'
+                          }`}
+                          style={{ width: `${bin.fillLevel}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-sm">{bin.fillLevel}%</span>
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                      bin.status === 'critical' ? 'bg-red-500' :
+                      bin.status === 'warning' ? 'bg-yellow-500' : 'bg-green-500'
+                    }`}>
+                      {bin.status.toUpperCase()}
+                    </span>
+                  </td>
+                  <td className="p-4 text-slate-300">{bin.battery}%</td>
+                  <td className="p-4">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleRecordCollection(bin)}
+                        className="p-2 bg-green-500 hover:bg-green-600 rounded transition-all"
+                        title="Record Collection"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => openEditModal(bin)}
+                        className="p-2 bg-blue-500 hover:bg-blue-600 rounded transition-all"
+                        title="Edit"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBin(bin.binId)}
+                        className="p-2 bg-red-500 hover:bg-red-600 rounded transition-all"
+                        title="Delete"
+                      >
+                        <Trash className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-      {/* Add/Edit Modal */}
-      {(showAddModal || showEditModal) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
-          <div className="bg-white rounded-2xl p-6 w-[400px] space-y-4">
-            <h3 className="text-xl font-semibold text-center">
-              {showAddModal ? 'Add New Bin' : 'Edit Bin'}
-            </h3>
+      {/* Add Bin Modal */}
+      {/* Add Bin Modal */}
+{showAddModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="bg-slate-800 rounded-lg p-6 w-full max-w-md border border-slate-700 max-h-[90vh] overflow-y-auto">
+      <h3 className="text-xl font-bold mb-4">Add New Bin</h3>
+      <form onSubmit={handleAddBin} className="space-y-4">
+        <div>
+          <label className="block text-sm text-slate-400 mb-1">Bin ID</label>
+          <input
+            type="text"
+            required
+            value={formData.binId}
+            onChange={(e) => setFormData({...formData, binId: e.target.value})}
+            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+            placeholder="e.g., BIN011"
+          />
+        </div>
 
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="Bin ID"
-                value={formData.binId}
-                onChange={(e) => setFormData({ ...formData, binId: e.target.value })}
-                disabled={showEditModal}
-                className="w-full border p-2 rounded-lg"
-              />
-              <input
-                type="text"
-                placeholder="Location"
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                className="w-full border p-2 rounded-lg"
-              />
-              <div className="flex gap-3">
+        {/* Location Search */}
+        <div className="relative">
+          <label className="block text-sm text-slate-400 mb-1">
+            Search Location (City: Nagpur)
+          </label>
+          <input
+            type="text"
+            required
+            value={formData.location}
+            onChange={(e) => handleLocationSearch(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+            placeholder="e.g., Sitabuldi, Railway Station, Airport"
+          />
+          
+          {/* Location Suggestions Dropdown */}
+          {locationSuggestions.length > 0 && (
+            <div className="absolute z-10 w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              {locationSuggestions.map((suggestion, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => selectLocation(suggestion)}
+                  className="w-full text-left px-4 py-3 hover:bg-slate-800 border-b border-slate-700 last:border-b-0 transition-colors"
+                >
+                  <div className="font-semibold text-sm text-white">
+                    {suggestion.display_name.split(',')[0]}
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    {suggestion.display_name}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          
+          {searchingLocation && (
+            <div className="text-xs text-slate-400 mt-1">Searching locations...</div>
+          )}
+        </div>
+
+        {/* Manual Coordinates (Auto-filled from search) */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">
+              Latitude {formData.lat && '✓'}
+            </label>
+            <input
+              type="number"
+              step="0.0001"
+              required
+              value={formData.lat}
+              onChange={(e) => setFormData({...formData, lat: e.target.value})}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+              placeholder="21.1458"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">
+              Longitude {formData.lng && '✓'}
+            </label>
+            <input
+              type="number"
+              step="0.0001"
+              required
+              value={formData.lng}
+              onChange={(e) => setFormData({...formData, lng: e.target.value})}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+              placeholder="79.0882"
+            />
+          </div>
+        </div>
+
+        {formData.lat && formData.lng && (
+          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded p-3 text-sm">
+            <div className="text-emerald-500 font-semibold mb-1">📍 Location Found!</div>
+            <div className="text-slate-300">
+              {formData.location || 'Location selected'}
+              <br />
+              <span className="text-xs text-slate-400">
+                Coordinates: {parseFloat(formData.lat).toFixed(4)}, {parseFloat(formData.lng).toFixed(4)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-3 mt-6">
+          <button
+            type="submit"
+            className="flex-1 bg-emerald-500 hover:bg-emerald-600 px-4 py-2 rounded transition-all"
+          >
+            Add Bin
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowAddModal(false);
+              setLocationSuggestions([]);
+              setFormData({ binId: '', location: '', lat: '', lng: '' });
+            }}
+            className="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded transition-all"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+)}
+      {/* Edit Bin Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-slate-800 rounded-lg p-6 w-full max-w-md border border-slate-700">
+            <h3 className="text-xl font-bold mb-4">Edit Bin: {selectedBin?.binId}</h3>
+            <form onSubmit={handleEditBin} className="space-y-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Location</label>
                 <input
                   type="text"
-                  placeholder="Latitude"
-                  value={formData.lat}
-                  onChange={(e) => setFormData({ ...formData, lat: e.target.value })}
-                  className="w-1/2 border p-2 rounded-lg"
-                />
-                <input
-                  type="text"
-                  placeholder="Longitude"
-                  value={formData.lng}
-                  onChange={(e) => setFormData({ ...formData, lng: e.target.value })}
-                  className="w-1/2 border p-2 rounded-lg"
+                  required
+                  value={formData.location}
+                  onChange={(e) => setFormData({...formData, location: e.target.value})}
+                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
                 />
               </div>
-            </div>
-
-            <div className="flex justify-between mt-4">
-              <button
-                onClick={() => {
-                  setShowAddModal(false);
-                  setShowEditModal(false);
-                }}
-                className="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded-xl"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={showAddModal ? handleAddBin : handleEditBin}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl"
-              >
-                {showAddModal ? 'Add' : 'Save'}
-              </button>
-            </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Latitude</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    required
+                    value={formData.lat}
+                    onChange={(e) => setFormData({...formData, lat: e.target.value})}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Longitude</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    required
+                    value={formData.lng}
+                    onChange={(e) => setFormData({...formData, lng: e.target.value})}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded transition-all"
+                >
+                  Update Bin
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
