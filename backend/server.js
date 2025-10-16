@@ -56,7 +56,18 @@ async function getLocationName(lat, lng) {
     return 'Unknown Location';
   }
 }
-
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Smart Waste Management API',
+    status: 'Running',
+    endpoints: {
+      health: '/api/health',
+      bins: '/api/bins',
+      docs: 'https://github.com/YOUR_USERNAME/smart-waste-management'
+    }
+  });
+});
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ 
