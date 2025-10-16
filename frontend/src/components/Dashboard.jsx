@@ -18,7 +18,7 @@ const [activeTab, setActiveTab] = useState('overview');
     fetchBins();
 
     // Setup WebSocket connection
-    const socket = io('http://localhost:5001');
+    const socket = io(import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5001');
 
     socket.on('connect', () => {
       console.log(' Connected to server');
