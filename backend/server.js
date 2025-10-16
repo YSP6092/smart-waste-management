@@ -10,13 +10,23 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: [
+      "http://localhost:5173",
+      "https://smart-waste-management-azure.vercel.app"
+    ],
     methods: ["GET", "POST", "PUT", "DELETE"]
   }
 });
 
 app.use(cors());
 app.use(express.json());
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "https://smart-waste-management-azure.vercel.app"  // Add your Vercel URL
+  ],
+  credentials: true
+}));
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI)
