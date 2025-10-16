@@ -17,15 +17,13 @@ const Admin = ({ bins, onRefresh }) => {
     lng: ''
   });
 
-  // Rest of your component code goes here...
-};
+  // Debounce search variable
+  let searchTimeout;
 
-
-
-
-const handleAddBin = async (e) => {
+  // Add Bin Handler
+  const handleAddBin = async (e) => {
     e.preventDefault();
-    
+
     const newBin = {
       binId: formData.binId,
       location: formData.location,
@@ -40,7 +38,7 @@ const handleAddBin = async (e) => {
     };
 
     try {
-     await axios.post(`${API_URL}/api/bins`, newBin);
+      await axios.post(`${API_URL}/api/bins`, newBin);
       alert('Bin added successfully!');
       setShowAddModal(false);
       setFormData({ binId: '', location: '', lat: '', lng: '' });
@@ -50,17 +48,18 @@ const handleAddBin = async (e) => {
     }
   };
 
+  // Edit Bin Handler
   const handleEditBin = async (e) => {
     e.preventDefault();
-    
+
     try {
-     await axios.put(`${API_URL}/api/bins/${selectedBin.binId}`, {
-  location: formData.location,
-  coordinates: {
-    lat: parseFloat(formData.lat),
-    lng: parseFloat(formData.lng)
-  }
-});
+      await axios.put(`${API_URL}/api/bins/${selectedBin.binId}`, {
+        location: formData.location,
+        coordinates: {
+          lat: parseFloat(formData.lat),
+          lng: parseFloat(formData.lng)
+        }
+      });
       alert('Bin updated successfully!');
       setShowEditModal(false);
       setSelectedBin(null);
@@ -70,9 +69,10 @@ const handleAddBin = async (e) => {
     }
   };
 
+  // Delete Bin Handler
   const handleDeleteBin = async (binId) => {
     if (!window.confirm('Are you sure you want to delete this bin?')) return;
-    
+
     try {
       await axios.delete(`${API_URL}/api/bins/${binId}`);
       alert('Bin deleted successfully!');
@@ -81,55 +81,56 @@ const handleAddBin = async (e) => {
       alert('Error deleting bin: ' + error.message);
     }
   };
+
   // Search location using OpenStreetMap
-const searchLocation = async (query) => {
-  if (query.length < 3) {
+  const searchLocation = async (query) => {
+    if (query.length < 3) {
+      setLocationSuggestions([]);
+      return;
+    }
+
+    setSearchingLocation(true);
+    try {
+      const response = await axios.get(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Nagpur, India')}&limit=5`
+      );
+      setLocationSuggestions(response.data);
+    } catch (error) {
+      console.error('Error searching location:', error);
+      setLocationSuggestions([]);
+    }
+    setSearchingLocation(false);
+  };
+
+  // Select location from suggestions
+  const selectLocation = (suggestion) => {
+    setFormData({
+      ...formData,
+      location: suggestion.display_name.split(',')[0], // First part of address
+      lat: suggestion.lat,
+      lng: suggestion.lon
+    });
     setLocationSuggestions([]);
-    return;
-  }
-  
-  setSearchingLocation(true);
-  try {
-    const response = await axios.get(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Nagpur, India')}&limit=5`
-    );
-    setLocationSuggestions(response.data);
-  } catch (error) {
-    console.error('Error searching location:', error);
-    setLocationSuggestions([]);
-  }
-  setSearchingLocation(false);
-};
+  };
 
-// Select location from suggestions
-const selectLocation = (suggestion) => {
-  setFormData({
-    ...formData,
-    location: suggestion.display_name.split(',')[0], // First part of address
-    lat: suggestion.lat,
-    lng: suggestion.lon
-  });
-  setLocationSuggestions([]);
-};
+  // Debounce search
+  const handleLocationSearch = (value) => {
+    setFormData({ ...formData, location: value });
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      searchLocation(value);
+    }, 500);
+  };
 
-// Debounce search
-let searchTimeout;
-const handleLocationSearch = (value) => {
-  setFormData({ ...formData, location: value });
-  clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => {
-    searchLocation(value);
-  }, 500);
-};
-
+  // Record Collection Handler
   const handleRecordCollection = async (bin) => {
     if (!window.confirm(`Record collection for ${bin.binId}?`)) return;
 
     try {
       await axios.put(`${API_URL}/api/bins/${bin.binId}`, {
-  fillLevel: 0,
-  status: 'normal'
-});
+        fillLevel: 0,
+        status: 'normal'
+      });
       alert('Collection recorded!');
       if (onRefresh) onRefresh();
     } catch (error) {
@@ -137,6 +138,7 @@ const handleLocationSearch = (value) => {
     }
   };
 
+  // Export Data Handler
   const handleExportData = () => {
     const csvContent = [
       ['Bin ID', 'Location', 'Fill Level', 'Status', 'Battery', 'Temperature', 'Latitude', 'Longitude'],
@@ -160,28 +162,31 @@ const handleLocationSearch = (value) => {
     a.click();
     window.URL.revokeObjectURL(url);
   };
-const handleUpdateLocations = async () => {
-  if (!window.confirm('Update all bins with real location names from coordinates? This may take 10-15 seconds.')) return;
 
-  try {
-    const response = await axios.post(`${API_URL}/api/bins/update-locations`);
-    alert(response.data.message);
-    if (onRefresh) onRefresh();
-  } catch (error) {
-    alert('Error updating locations: ' + error.message);
-  }
-};
+  // Update Locations Handler
+  const handleUpdateLocations = async () => {
+    if (!window.confirm('Update all bins with real location names from coordinates? This may take 10-15 seconds.')) return;
 
-const openEditModal = (bin) => {
-  setSelectedBin(bin);
-  setFormData({
-    binId: bin.binId,
-    location: bin.location,
-    lat: bin.coordinates.lat.toString(),
-    lng: bin.coordinates.lng.toString()
-  });
-  setShowEditModal(true);
-};
+    try {
+      const response = await axios.post(`${API_URL}/api/bins/update-locations`);
+      alert(response.data.message);
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      alert('Error updating locations: ' + error.message);
+    }
+  };
+
+  // Open Edit Modal
+  const openEditModal = (bin) => {
+    setSelectedBin(bin);
+    setFormData({
+      binId: bin.binId,
+      location: bin.location,
+      lat: bin.coordinates.lat.toString(),
+      lng: bin.coordinates.lng.toString()
+    });
+    setShowEditModal(true);
+  };
 
   return (
     <div className="space-y-6">
